@@ -120,23 +120,68 @@ if forecast_df is not None and len(store_list) > 0:
         col2.metric("Average Weekly Sales", f"${store_data['Predicted_Weekly_Sales'].mean():,.0f}")
         col3.metric("Peak Weekly Sales", f"${store_data['Predicted_Weekly_Sales'].max():,.0f}")
 
-        # Line plot with rolling average (Plotly)
-        fig = px.line(store_data, x="Date", y=["Predicted_Weekly_Sales", "Rolling_4W"],
-                      labels={"value":"Weekly Sales", "variable":"Legend"}, title=f"Forecast + Rolling Avg - Store {selected_store}")
+        # Enhanced Line Plot with markers and unified hover
+        fig = px.line(
+            store_data,
+            x="Date",
+            y=["Predicted_Weekly_Sales", "Rolling_4W"],
+            labels={"value": "Weekly Sales", "variable": "Legend"},
+            title=f"Forecast + 4-Week Rolling Average - Store {selected_store}",
+            markers=True
+        )
+        fig.update_traces(mode="lines+markers")
+        fig.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Weekly Sales",
+            legend_title="Legend",
+            hovermode="x unified",
+            template="plotly_white"
+        )
         st.plotly_chart(fig, use_container_width=True)
 
     # ---------- Tab 2: Multi-Store Comparison ----------
     with tab2:
         st.subheader("📊 Multi-Store Forecast Trend (Next Weeks)")
         multi_store_data = forecast_df[forecast_df["Store"].isin(store_list[:3])].sort_values("Date").head(n_weeks)
-        fig2 = px.line(multi_store_data, x="Date", y="Predicted_Weekly_Sales", color=multi_store_data["Store"].astype(str),
-                       labels={"color":"Store ID", "Predicted_Weekly_Sales":"Weekly Sales"}, title="Forecasted Sales Trend - Stores 1-3")
+
+        # Line chart with markers, color-coded stores, and smooth hover
+        fig2 = px.line(
+            multi_store_data,
+            x="Date",
+            y="Predicted_Weekly_Sales",
+            color=multi_store_data["Store"].astype(str),
+            labels={"color": "Store ID", "Predicted_Weekly_Sales": "Weekly Sales"},
+            title="Forecasted Sales Trend - Stores 1-3",
+            markers=True
+        )
+        fig2.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Weekly Sales",
+            legend_title="Store ID",
+            hovermode="x unified",
+            template="plotly_white"
+        )
         st.plotly_chart(fig2, use_container_width=True)
 
         st.subheader("🏬 Average Forecasted Sales per Store")
         store_avg = forecast_df.groupby("Store")["Predicted_Weekly_Sales"].mean().sort_values(ascending=False).reset_index()
-        fig3 = px.bar(store_avg, x="Store", y="Predicted_Weekly_Sales", color="Predicted_Weekly_Sales",
-                      color_continuous_scale="Viridis", title="Average Forecast per Store")
+        
+        # Enhanced bar chart with hover text
+        fig3 = px.bar(
+            store_avg,
+            x="Store",
+            y="Predicted_Weekly_Sales",
+            color="Predicted_Weekly_Sales",
+            color_continuous_scale="Viridis",
+            title="Average Forecast per Store",
+            text="Predicted_Weekly_Sales"
+        )
+        fig3.update_traces(texttemplate="$%{text:,.0f}", textposition="outside")
+        fig3.update_layout(
+            yaxis_title="Average Weekly Sales",
+            xaxis_title="Store",
+            template="plotly_white"
+        )
         st.plotly_chart(fig3, use_container_width=True)
 
     # ---------- Tab 3: Data Table ----------
