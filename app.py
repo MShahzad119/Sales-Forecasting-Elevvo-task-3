@@ -1,6 +1,6 @@
 # =========================
 # Walmart Sales Forecasting Dashboard
-# Professional Version
+# Professional Version - Robust CSV/Excel Handling
 # Author: Shahzad
 # =========================
 
@@ -32,22 +32,22 @@ st.markdown(
 @st.cache_resource
 def load_model():
     try:
-        model = joblib.load("best_model.pkl")  # Make sure model is in repo root
+        model = joblib.load("best_model.pkl")  # Ensure model is in project root
         return model
     except Exception as e:
-        st.error(f"Error loading model: {e}")
+        st.error(f"❌ Error loading model: {e}")
         return None
 
 model = load_model()
 
 # =========================
-# Load Data (CSV / Excel) + Convert to CSV + Detect Date & Store
+# Load Data (CSV / Excel) + Robust Handling
 # =========================
 @st.cache_data
 def load_data(file_path=None):
     try:
         # -------------------------
-        # Read file
+        # Load file
         # -------------------------
         if file_path:
             try:
@@ -61,7 +61,9 @@ def load_data(file_path=None):
                     except Exception as e:
                         st.error("❌ Unsupported format or corrupt file. Upload CSV, XLS, or XLSX.")
                         return None, []
+
         else:
+            # Default file
             try:
                 df = pd.read_csv("future_forecast.csv")
             except FileNotFoundError:
@@ -71,48 +73,40 @@ def load_data(file_path=None):
                     df = pd.read_excel("future_forecast.xls", engine="xlrd")
 
         # -------------------------
-        # Clean column names
+        # Strip spaces from headers
         # -------------------------
-        df.columns = df.columns.str.strip().str.replace("\n","").str.replace("\r","")
-
-        # Convert to CSV for download
-        st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
+        df.columns = df.columns.str.strip()
 
         # -------------------------
         # Detect Date column
         # -------------------------
-        date_col = None
-        for col in df.columns:
-            if "date" in col.lower():
-                date_col = col
-                break
-        if date_col is None:
-            st.error("❌ No 'Date' column found. Make sure your file has a date column.")
+        date_cols = [c for c in df.columns if "date" in c.lower()]
+        if not date_cols:
+            st.error(f"❌ No 'Date' column found. Columns detected: {df.columns.tolist()}")
             return None, []
 
-        # Robust date parsing
+        date_col = date_cols[0]
         df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-        n_before = len(df)
+        dropped = df[df[date_col].isna()].shape[0]
+        if dropped > 0:
+            st.warning(f"⚠️ Dropped {dropped} rows with invalid dates.")
         df = df.dropna(subset=[date_col])
-        n_after = len(df)
-        if n_before != n_after:
-            st.warning(f"⚠️ Dropped {n_before - n_after} rows with invalid dates.")
         df.rename(columns={date_col: "Date"}, inplace=True)
 
         # -------------------------
-        # Detect Store column
+        # Check Store column
         # -------------------------
-        store_col = None
-        for col in df.columns:
-            if "store" in col.lower():
-                store_col = col
-                break
-        if store_col is None:
-            st.error("❌ No 'Store' column found. Make sure your file has a 'Store' column.")
+        if "Store" not in df.columns:
+            st.error(f"❌ No 'Store' column found. Columns detected: {df.columns.tolist()}")
             return None, []
 
-        df.rename(columns={store_col: "Store"}, inplace=True)
         stores = sorted(df["Store"].unique())
+
+        # -------------------------
+        # Store CSV for download
+        # -------------------------
+        st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
+
         return df, stores
 
     except Exception as e:
@@ -133,7 +127,9 @@ if forecast_df is not None and len(store_list) > 0:
     selected_store = st.sidebar.selectbox("Select Store", store_list)
     n_weeks = st.sidebar.slider("Weeks to Display", min_value=4, max_value=52, value=12, step=4)
 
-    # Download button
+    # -------------------------
+    # Download Button
+    # -------------------------
     st.sidebar.markdown("---")
     st.sidebar.markdown("📥 Download Forecast CSV")
     csv_data = st.session_state.get('uploaded_csv')
