@@ -29,7 +29,12 @@ st.markdown("Interactive dashboard to visualize predicted weekly sales with KPIs
 # =========================
 @st.cache_resource
 def load_model():
-    return joblib.load("best_model.pkl")  # Ensure model is in project root
+    try:
+        model = joblib.load("best_model.pkl")  # Ensure file exists in repo root
+        return model
+    except Exception as e:
+        st.error(f"Error loading model: {e}")
+        return None
 
 model = load_model()
 
@@ -42,17 +47,17 @@ def load_data(file_path=None):
         if file_path:
             if file_path.name.endswith(".csv"):
                 df = pd.read_csv(file_path)
-            elif file_path.name.endswith(".xlsx"):
+            elif file_path.name.endswith((".xlsx", ".xls")):
                 df = pd.read_excel(file_path)
             else:
                 st.error("Unsupported file type. Upload CSV or Excel.")
                 return None, []
         else:
-            # Default files
+            # Default file in repo root
             try:
                 df = pd.read_csv("future_forecast.csv")
-            except:
-                df = pd.read_excel("future_forecast.xlsx")
+            except FileNotFoundError:
+                df = pd.read_excel("future_forecast.xls")
         df["Date"] = pd.to_datetime(df["Date"])
         stores = sorted(df["Store"].unique())
         return df, stores
@@ -66,12 +71,12 @@ def load_data(file_path=None):
 st.sidebar.header("Filter Options")
 
 uploaded_file = st.sidebar.file_uploader(
-    "Upload Forecast (CSV or Excel)", type=["csv", "xlsx"]
+    "Upload Forecast (CSV or Excel)", type=["csv", "xlsx", "xls"]
 )
 
-test, store_list = load_data(uploaded_file)
+forecast_df, store_list = load_data(uploaded_file)
 
-if test is not None and len(store_list) > 0:
+if forecast_df is not None and len(store_list) > 0:
 
     selected_store = st.sidebar.selectbox("Select Store", store_list)
     n_weeks = st.sidebar.slider("Weeks to Display", min_value=4, max_value=52, value=12, step=4)
@@ -80,7 +85,7 @@ if test is not None and len(store_list) > 0:
     st.sidebar.markdown("📥 Download Forecast")
     st.sidebar.download_button(
         "Download Forecast CSV",
-        data=test.to_csv(index=False).encode('utf-8'),
+        data=forecast_df.to_csv(index=False).encode('utf-8'),
         file_name="future_forecast_download.csv",
         mime="text/csv"
     )
@@ -88,7 +93,7 @@ if test is not None and len(store_list) > 0:
     # =========================
     # Filter Data for Selected Store
     # =========================
-    store_data = test[test["Store"] == selected_store].sort_values("Date").head(n_weeks)
+    store_data = forecast_df[forecast_df["Store"] == selected_store].sort_values("Date").head(n_weeks)
     store_data["Rolling_4W"] = store_data["Predicted_Weekly_Sales"].rolling(4).mean()
 
     # =========================
@@ -126,7 +131,7 @@ if test is not None and len(store_list) > 0:
     # Multi-Store Forecast Trend
     # =========================
     st.subheader("📊 Multi-Store Forecast Trend (Next Weeks)")
-    multi_store_data = test[test["Store"].isin(store_list[:3])].sort_values("Date")
+    multi_store_data = forecast_df[forecast_df["Store"].isin(store_list[:3])].sort_values("Date")
     fig2, ax2 = plt.subplots(figsize=(12,5))
     colors = ["#1f77b4","#ff7f0e","#2ca02c"]
     for i, store_id in enumerate(store_list[:3]):
@@ -144,7 +149,7 @@ if test is not None and len(store_list) > 0:
     # Store-wise Average Forecast
     # =========================
     st.subheader("🏬 Average Forecasted Sales per Store")
-    store_avg = test.groupby("Store")["Predicted_Weekly_Sales"].mean().sort_values().reset_index()
+    store_avg = forecast_df.groupby("Store")["Predicted_Weekly_Sales"].mean().sort_values().reset_index()
     fig3, ax3 = plt.subplots(figsize=(10,5))
     sns.barplot(x="Predicted_Weekly_Sales", y="Store", data=store_avg, palette="mako", ax=ax3)
     ax3.set_xlabel("Average Predicted Weekly Sales")
@@ -157,4 +162,4 @@ if test is not None and len(store_list) > 0:
     st.markdown("Developed by **Shahzad** | Professional Walmart Sales Forecast Dashboard")
 
 else:
-    st.warning("Please upload a CSV or Excel file with forecast data to display dashboard.")
+    st.warning("Please upload a CSV or Excel file with forecast data to display the dashboard.")
