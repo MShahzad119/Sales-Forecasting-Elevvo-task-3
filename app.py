@@ -41,31 +41,27 @@ def load_model():
 model = load_model()
 
 # =========================
-# Load Data (CSV / Excel) + Convert to CSV + Detect Date
+# Load Data (CSV / Excel) + Convert to CSV + Detect Date & Store
 # =========================
 @st.cache_data
 def load_data(file_path=None):
     try:
+        # -------------------------
+        # Read file
+        # -------------------------
         if file_path:
             try:
-                # Try CSV first
                 df = pd.read_csv(file_path)
             except Exception:
                 try:
-                    # Then try Excel (.xlsx)
                     df = pd.read_excel(file_path, engine="openpyxl")
                 except Exception:
                     try:
-                        # Then Excel (.xls)
                         df = pd.read_excel(file_path, engine="xlrd")
                     except Exception as e:
                         st.error("❌ Unsupported format or corrupt file. Upload CSV, XLS, or XLSX.")
                         return None, []
-
-            # Convert to CSV for download
-            st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
         else:
-            # Default file
             try:
                 df = pd.read_csv("future_forecast.csv")
             except FileNotFoundError:
@@ -73,7 +69,14 @@ def load_data(file_path=None):
                     df = pd.read_excel("future_forecast.xlsx", engine="openpyxl")
                 except:
                     df = pd.read_excel("future_forecast.xls", engine="xlrd")
-            st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
+
+        # -------------------------
+        # Clean column names
+        # -------------------------
+        df.columns = df.columns.str.strip().str.replace("\n","").str.replace("\r","")
+
+        # Convert to CSV for download
+        st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
 
         # -------------------------
         # Detect Date column
@@ -97,12 +100,18 @@ def load_data(file_path=None):
         df.rename(columns={date_col: "Date"}, inplace=True)
 
         # -------------------------
-        # Check Store column
+        # Detect Store column
         # -------------------------
-        if "Store" not in df.columns:
+        store_col = None
+        for col in df.columns:
+            if "store" in col.lower():
+                store_col = col
+                break
+        if store_col is None:
             st.error("❌ No 'Store' column found. Make sure your file has a 'Store' column.")
             return None, []
 
+        df.rename(columns={store_col: "Store"}, inplace=True)
         stores = sorted(df["Store"].unique())
         return df, stores
 
@@ -208,4 +217,4 @@ if forecast_df is not None and len(store_list) > 0:
     st.markdown("Developed by **Shahzad** | Professional Walmart Sales Forecast Dashboard")
 
 else:
-    st.warning("Please upload a CSV or Excel file (.csv, .xls, .xlsx) with a 'Date' and 'Store' column to display the dashboard.")
+    st.warning("Please upload a CSV or Excel file (.csv, .xls, .xlsx) with 'Date' and 'Store' columns to display the dashboard.")
