@@ -87,7 +87,13 @@ def load_data(file_path=None):
             st.error("❌ No 'Date' column found. Make sure your file has a date column.")
             return None, []
 
-        df[date_col] = pd.to_datetime(df[date_col])
+        # Robust date parsing
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+        n_before = len(df)
+        df = df.dropna(subset=[date_col])
+        n_after = len(df)
+        if n_before != n_after:
+            st.warning(f"⚠️ Dropped {n_before - n_after} rows with invalid dates.")
         df.rename(columns={date_col: "Date"}, inplace=True)
 
         # -------------------------
