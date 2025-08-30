@@ -1,6 +1,6 @@
 # =========================
-# Walmart Sales Forecasting Dashboard - Professional Version ✅
-# Author: Shahzad
+# Walmart Sales Forecasting Dashboard
+# Professional Version (Streamlit App) ✅
 # =========================
 
 import streamlit as st
@@ -8,6 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
+from matplotlib.ticker import FuncFormatter
 
 sns.set(style="whitegrid")
 
@@ -31,51 +32,71 @@ st.markdown(
 @st.cache_resource
 def load_model():
     try:
-        model = joblib.load("best_model.pkl")  # Ensure this file is in your repo root
+        model = joblib.load("best_model.pkl")  # Make sure model file is in repo root
         return model
     except Exception as e:
-        st.error(f"❌ Error loading model: {e}")
+        st.error(f"Error loading model: {e}")
         return None
 
 model = load_model()
 
 # =========================
-# Load Data (CSV / Excel) + Fix single-column CSVs + Convert types
+# Load Data (CSV / Excel) + Convert to CSV + Detect Date
 # =========================
 @st.cache_data
 def load_data(file_path=None):
     try:
         if file_path:
-            # Try CSV first
             try:
                 df = pd.read_csv(file_path)
-                # If CSV has single column, split it by comma
-                if df.shape[1] == 1:
-                    df = df.iloc[:,0].str.split(",", expand=True)
-                    df.columns = ["Store","Dept","Date","Predicted_Weekly_Sales"]
             except Exception:
-                # Try Excel
-                df = pd.read_excel(file_path, engine="openpyxl")
+                try:
+                    df = pd.read_excel(file_path, engine="openpyxl")
+                except Exception:
+                    try:
+                        df = pd.read_excel(file_path, engine="xlrd")
+                    except Exception as e:
+                        st.error("❌ Unsupported format or corrupt file. Upload CSV, XLS, or XLSX.")
+                        return None, []
+
+            st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
         else:
-            # Default file
-            df = pd.read_csv("future_forecast.csv")
-            if df.shape[1] == 1:
-                df = df.iloc[:,0].str.split(",", expand=True)
-                df.columns = ["Store","Dept","Date","Predicted_Weekly_Sales"]
+            try:
+                df = pd.read_csv("future_forecast.csv")
+            except FileNotFoundError:
+                try:
+                    df = pd.read_excel("future_forecast.xlsx", engine="openpyxl")
+                except:
+                    df = pd.read_excel("future_forecast.xls", engine="xlrd")
+            st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
 
-        # Convert columns to correct types
-        df["Store"] = df["Store"].astype(int)
-        df["Dept"] = df["Dept"].astype(int)
-        df["Predicted_Weekly_Sales"] = df["Predicted_Weekly_Sales"].astype(float)
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")  # drop invalid dates
+        # -------------------------
+        # Detect Date column
+        # -------------------------
+        date_col = None
+        for col in df.columns:
+            if "date" in col.lower():
+                date_col = col
+                break
+        if date_col is None:
+            st.error("❌ No 'Date' column found. Make sure your file has a date column.")
+            return None, []
 
-        # Drop rows with invalid dates
-        df = df.dropna(subset=["Date"])
+        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+        dropped_rows = df[df[date_col].isna()].shape[0]
+        if dropped_rows > 0:
+            st.warning(f"⚠️ Dropped {dropped_rows} rows with invalid dates.")
+        df = df.dropna(subset=[date_col])
+        df.rename(columns={date_col: "Date"}, inplace=True)
+
+        # -------------------------
+        # Check Store column
+        # -------------------------
+        if "Store" not in df.columns:
+            st.error(f"❌ No 'Store' column found. Columns detected: {list(df.columns)}")
+            return None, []
 
         stores = sorted(df["Store"].unique())
-        # Save CSV for download
-        st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
-
         return df, stores
 
     except Exception as e:
@@ -83,7 +104,7 @@ def load_data(file_path=None):
         return None, []
 
 # =========================
-# Sidebar - Upload & Options
+# Sidebar Options
 # =========================
 st.sidebar.header("Filter Options")
 uploaded_file = st.sidebar.file_uploader(
@@ -96,9 +117,7 @@ if forecast_df is not None and len(store_list) > 0:
     selected_store = st.sidebar.selectbox("Select Store", store_list)
     n_weeks = st.sidebar.slider("Weeks to Display", min_value=4, max_value=52, value=12, step=4)
 
-    # =========================
-    # Download Button
-    # =========================
+    # Download button
     st.sidebar.markdown("---")
     st.sidebar.markdown("📥 Download Forecast CSV")
     csv_data = st.session_state.get('uploaded_csv')
@@ -106,7 +125,7 @@ if forecast_df is not None and len(store_list) > 0:
         st.sidebar.download_button(
             "Download Forecast CSV",
             data=csv_data,
-            file_name="future_forecast_clean.csv",
+            file_name="future_forecast_download.csv",
             mime="text/csv"
         )
 
@@ -132,7 +151,7 @@ if forecast_df is not None and len(store_list) > 0:
     st.markdown("---")
 
     # =========================
-    # Forecast Plot - Selected Store
+    # Forecast plot
     # =========================
     st.subheader(f"📈 Forecasted Weekly Sales - Store {selected_store}")
     fig, ax = plt.subplots(figsize=(10,5))
@@ -144,11 +163,12 @@ if forecast_df is not None and len(store_list) > 0:
     ax.set_title(f"Forecast + Rolling Average for Store {selected_store}", fontsize=14, fontweight="bold")
     ax.legend()
     ax.grid(alpha=0.2)
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"${y:,.0f}"))
     plt.xticks(rotation=45)
     st.pyplot(fig)
 
     # =========================
-    # Multi-Store Forecast Trend
+    # Multi-store forecast
     # =========================
     st.subheader("📊 Multi-Store Forecast Trend (Next Weeks)")
     multi_store_data = forecast_df[forecast_df["Store"].isin(store_list[:3])].sort_values("Date")
@@ -162,11 +182,12 @@ if forecast_df is not None and len(store_list) > 0:
     ax2.set_title("Forecasted Sales Trend - Stores 1-3", fontsize=14, fontweight="bold")
     ax2.legend()
     ax2.grid(alpha=0.2)
+    ax2.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"${y:,.0f}"))
     plt.xticks(rotation=45)
     st.pyplot(fig2)
 
     # =========================
-    # Store-wise Average Forecast
+    # Store-wise average
     # =========================
     st.subheader("🏬 Average Forecasted Sales per Store")
     store_avg = forecast_df.groupby("Store")["Predicted_Weekly_Sales"].mean().sort_values().reset_index()
@@ -176,10 +197,11 @@ if forecast_df is not None and len(store_list) > 0:
     ax3.set_ylabel("Store")
     ax3.set_title("Average Forecast per Store", fontsize=14, fontweight="bold")
     ax3.grid(axis="x", alpha=0.2)
+    ax3.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f"${x:,.0f}"))
     st.pyplot(fig3)
 
     st.markdown("---")
     st.markdown("Developed by **Shahzad** | Professional Walmart Sales Forecast Dashboard")
 
 else:
-    st.warning("Please upload a CSV or Excel file (.csv, .xls, .xlsx) with columns: 'Store', 'Dept', 'Date', 'Predicted_Weekly_Sales'.")
+    st.warning("Please upload a CSV or Excel file (.csv, .xls, .xlsx) with a 'Date' and 'Store' column to display the dashboard.")
