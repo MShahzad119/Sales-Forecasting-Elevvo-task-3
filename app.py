@@ -1,0 +1,160 @@
+# =========================
+# Streamlit Dashboard - Walmart Sales Forecasting
+# Supports CSV & Excel + Joblib
+# Author: Shahzad
+# =========================
+
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import joblib
+
+sns.set(style="whitegrid")
+
+# =========================
+# Page Config
+# =========================
+st.set_page_config(
+    page_title="Walmart Sales Forecast Dashboard",
+    layout="wide",
+    page_icon="📊"
+)
+
+st.title("📈 Walmart Sales Forecasting Dashboard")
+st.markdown("Interactive dashboard to visualize predicted weekly sales with KPIs and trends.")
+
+# =========================
+# Load Model
+# =========================
+@st.cache_resource
+def load_model():
+    return joblib.load("best_model.pkl")  # Ensure model is in project root
+
+model = load_model()
+
+# =========================
+# Load Forecast Data (CSV or Excel)
+# =========================
+@st.cache_data
+def load_data(file_path=None):
+    try:
+        if file_path:
+            if file_path.name.endswith(".csv"):
+                df = pd.read_csv(file_path)
+            elif file_path.name.endswith(".xlsx"):
+                df = pd.read_excel(file_path)
+            else:
+                st.error("Unsupported file type. Upload CSV or Excel.")
+                return None, []
+        else:
+            # Default files
+            try:
+                df = pd.read_csv("future_forecast.csv")
+            except:
+                df = pd.read_excel("future_forecast.xlsx")
+        df["Date"] = pd.to_datetime(df["Date"])
+        stores = sorted(df["Store"].unique())
+        return df, stores
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None, []
+
+# =========================
+# Sidebar - File Upload & Options
+# =========================
+st.sidebar.header("Filter Options")
+
+uploaded_file = st.sidebar.file_uploader(
+    "Upload Forecast (CSV or Excel)", type=["csv", "xlsx"]
+)
+
+test, store_list = load_data(uploaded_file)
+
+if test is not None and len(store_list) > 0:
+
+    selected_store = st.sidebar.selectbox("Select Store", store_list)
+    n_weeks = st.sidebar.slider("Weeks to Display", min_value=4, max_value=52, value=12, step=4)
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("📥 Download Forecast")
+    st.sidebar.download_button(
+        "Download Forecast CSV",
+        data=test.to_csv(index=False).encode('utf-8'),
+        file_name="future_forecast_download.csv",
+        mime="text/csv"
+    )
+
+    # =========================
+    # Filter Data for Selected Store
+    # =========================
+    store_data = test[test["Store"] == selected_store].sort_values("Date").head(n_weeks)
+    store_data["Rolling_4W"] = store_data["Predicted_Weekly_Sales"].rolling(4).mean()
+
+    # =========================
+    # KPIs
+    # =========================
+    total_sales = store_data["Predicted_Weekly_Sales"].sum()
+    avg_sales = store_data["Predicted_Weekly_Sales"].mean()
+    max_sales = store_data["Predicted_Weekly_Sales"].max()
+
+    st.subheader(f"🏬 Key Metrics - Store {selected_store}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total Forecasted Sales", f"${total_sales:,.0f}")
+    col2.metric("Average Weekly Sales", f"${avg_sales:,.0f}")
+    col3.metric("Peak Weekly Sales", f"${max_sales:,.0f}")
+
+    st.markdown("---")
+
+    # =========================
+    # Forecast Plot - Selected Store
+    # =========================
+    st.subheader(f"📈 Forecasted Weekly Sales - Store {selected_store}")
+    fig, ax = plt.subplots(figsize=(10,5))
+    ax.plot(store_data["Date"], store_data["Predicted_Weekly_Sales"], marker="o", linestyle="-", color="#1f77b4", label="Predicted Sales")
+    ax.plot(store_data["Date"], store_data["Rolling_4W"], linestyle="--", color="#ff7f0e", label="4-Week Rolling Avg", linewidth=2)
+    ax.fill_between(store_data["Date"], store_data["Rolling_4W"]*0.9, store_data["Rolling_4W"]*1.1, color="#ff7f0e", alpha=0.1)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Predicted Weekly Sales")
+    ax.set_title(f"Forecast + Rolling Average for Store {selected_store}", fontsize=14, fontweight="bold")
+    ax.legend()
+    ax.grid(alpha=0.2)
+    plt.xticks(rotation=45)
+    st.pyplot(fig)
+
+    # =========================
+    # Multi-Store Forecast Trend
+    # =========================
+    st.subheader("📊 Multi-Store Forecast Trend (Next Weeks)")
+    multi_store_data = test[test["Store"].isin(store_list[:3])].sort_values("Date")
+    fig2, ax2 = plt.subplots(figsize=(12,5))
+    colors = ["#1f77b4","#ff7f0e","#2ca02c"]
+    for i, store_id in enumerate(store_list[:3]):
+        data = multi_store_data[multi_store_data["Store"] == store_id].head(n_weeks)
+        ax2.plot(data["Date"], data["Predicted_Weekly_Sales"], marker="o", linestyle="-", color=colors[i], label=f"Store {store_id}", linewidth=2)
+    ax2.set_xlabel("Date")
+    ax2.set_ylabel("Predicted Weekly Sales")
+    ax2.set_title("Forecasted Sales Trend - Stores 1-3", fontsize=14, fontweight="bold")
+    ax2.legend()
+    ax2.grid(alpha=0.2)
+    plt.xticks(rotation=45)
+    st.pyplot(fig2)
+
+    # =========================
+    # Store-wise Average Forecast
+    # =========================
+    st.subheader("🏬 Average Forecasted Sales per Store")
+    store_avg = test.groupby("Store")["Predicted_Weekly_Sales"].mean().sort_values().reset_index()
+    fig3, ax3 = plt.subplots(figsize=(10,5))
+    sns.barplot(x="Predicted_Weekly_Sales", y="Store", data=store_avg, palette="mako", ax=ax3)
+    ax3.set_xlabel("Average Predicted Weekly Sales")
+    ax3.set_ylabel("Store")
+    ax3.set_title("Average Forecast per Store", fontsize=14, fontweight="bold")
+    ax3.grid(axis="x", alpha=0.2)
+    st.pyplot(fig3)
+
+    st.markdown("---")
+    st.markdown("Developed by **Shahzad** | Professional Walmart Sales Forecast Dashboard")
+
+else:
+    st.warning("Please upload a CSV or Excel file with forecast data to display dashboard.")
