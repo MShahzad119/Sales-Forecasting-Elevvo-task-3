@@ -47,15 +47,20 @@ model = load_model()
 def load_data(file_path=None):
     try:
         if file_path:
-            if file_path.name.endswith(".csv"):
+            try:
+                # Try CSV first
                 df = pd.read_csv(file_path)
-            elif file_path.name.endswith(".xls"):
-                df = pd.read_excel(file_path, engine="xlrd")
-            elif file_path.name.endswith(".xlsx"):
-                df = pd.read_excel(file_path, engine="openpyxl")
-            else:
-                st.error("Unsupported file type. Upload CSV, XLS, or XLSX.")
-                return None, []
+            except Exception:
+                try:
+                    # Then try Excel (.xlsx)
+                    df = pd.read_excel(file_path, engine="openpyxl")
+                except Exception:
+                    try:
+                        # Then Excel (.xls)
+                        df = pd.read_excel(file_path, engine="xlrd")
+                    except Exception as e:
+                        st.error("❌ Unsupported format or corrupt file. Upload CSV, XLS, or XLSX.")
+                        return None, []
 
             # Convert to CSV for download
             st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
@@ -64,7 +69,10 @@ def load_data(file_path=None):
             try:
                 df = pd.read_csv("future_forecast.csv")
             except FileNotFoundError:
-                df = pd.read_excel("future_forecast.xls", engine="xlrd")
+                try:
+                    df = pd.read_excel("future_forecast.xlsx", engine="openpyxl")
+                except:
+                    df = pd.read_excel("future_forecast.xls", engine="xlrd")
             st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
 
         # -------------------------
