@@ -1,6 +1,6 @@
 # =========================
-# Streamlit Dashboard - Walmart Sales Forecasting
-# Supports CSV & Excel + Joblib
+# Walmart Sales Forecasting Dashboard
+# Professional Version
 # Author: Shahzad
 # =========================
 
@@ -22,7 +22,9 @@ st.set_page_config(
 )
 
 st.title("📈 Walmart Sales Forecasting Dashboard")
-st.markdown("Interactive dashboard to visualize predicted weekly sales with KPIs and trends.")
+st.markdown(
+    "Interactive dashboard to visualize predicted weekly sales with KPIs, trends, and multi-store insights."
+)
 
 # =========================
 # Load Model
@@ -30,7 +32,7 @@ st.markdown("Interactive dashboard to visualize predicted weekly sales with KPIs
 @st.cache_resource
 def load_model():
     try:
-        model = joblib.load("best_model.pkl")  # Ensure file exists in repo root
+        model = joblib.load("best_model.pkl")  # Make sure model is in repo root
         return model
     except Exception as e:
         st.error(f"Error loading model: {e}")
@@ -39,7 +41,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# Load Forecast Data (CSV or Excel)
+# Load Data (CSV / Excel) + Convert to CSV
 # =========================
 @st.cache_data
 def load_data(file_path=None):
@@ -47,33 +49,40 @@ def load_data(file_path=None):
         if file_path:
             if file_path.name.endswith(".csv"):
                 df = pd.read_csv(file_path)
-            elif file_path.name.endswith((".xlsx", ".xls")):
-                df = pd.read_excel(file_path)
+                st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
+            elif file_path.name.endswith(".xls"):
+                df = pd.read_excel(file_path, engine="xlrd")
+                st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
+            elif file_path.name.endswith(".xlsx"):
+                df = pd.read_excel(file_path, engine="openpyxl")
+                st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
             else:
-                st.error("Unsupported file type. Upload CSV or Excel.")
+                st.error("Unsupported file type. Upload CSV, XLS, or XLSX.")
                 return None, []
         else:
-            # Default file in repo root
+            # Load default file from repo root
             try:
                 df = pd.read_csv("future_forecast.csv")
+                st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
             except FileNotFoundError:
-                df = pd.read_excel("future_forecast.xls")
+                df = pd.read_excel("future_forecast.xls", engine="xlrd")
+                st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
+
         df["Date"] = pd.to_datetime(df["Date"])
         stores = sorted(df["Store"].unique())
         return df, stores
+
     except Exception as e:
-        st.error(f"Error loading data: {e}")
+        st.error(f"❌ Error loading data: {e}")
         return None, []
 
 # =========================
-# Sidebar - File Upload & Options
+# Sidebar Options
 # =========================
 st.sidebar.header("Filter Options")
-
 uploaded_file = st.sidebar.file_uploader(
-    "Upload Forecast (CSV or Excel)", type=["csv", "xlsx", "xls"]
+    "Upload Forecast (CSV, XLS, or XLSX)", type=["csv", "xls", "xlsx"]
 )
-
 forecast_df, store_list = load_data(uploaded_file)
 
 if forecast_df is not None and len(store_list) > 0:
@@ -81,17 +90,20 @@ if forecast_df is not None and len(store_list) > 0:
     selected_store = st.sidebar.selectbox("Select Store", store_list)
     n_weeks = st.sidebar.slider("Weeks to Display", min_value=4, max_value=52, value=12, step=4)
 
+    # Download button
     st.sidebar.markdown("---")
-    st.sidebar.markdown("📥 Download Forecast")
-    st.sidebar.download_button(
-        "Download Forecast CSV",
-        data=forecast_df.to_csv(index=False).encode('utf-8'),
-        file_name="future_forecast_download.csv",
-        mime="text/csv"
-    )
+    st.sidebar.markdown("📥 Download Forecast CSV")
+    csv_data = st.session_state.get('uploaded_csv')
+    if csv_data is not None:
+        st.sidebar.download_button(
+            "Download Forecast CSV",
+            data=csv_data,
+            file_name="future_forecast_download.csv",
+            mime="text/csv"
+        )
 
     # =========================
-    # Filter Data for Selected Store
+    # Filter data for selected store
     # =========================
     store_data = forecast_df[forecast_df["Store"] == selected_store].sort_values("Date").head(n_weeks)
     store_data["Rolling_4W"] = store_data["Predicted_Weekly_Sales"].rolling(4).mean()
@@ -112,7 +124,7 @@ if forecast_df is not None and len(store_list) > 0:
     st.markdown("---")
 
     # =========================
-    # Forecast Plot - Selected Store
+    # Forecast plot
     # =========================
     st.subheader(f"📈 Forecasted Weekly Sales - Store {selected_store}")
     fig, ax = plt.subplots(figsize=(10,5))
@@ -128,7 +140,7 @@ if forecast_df is not None and len(store_list) > 0:
     st.pyplot(fig)
 
     # =========================
-    # Multi-Store Forecast Trend
+    # Multi-store forecast
     # =========================
     st.subheader("📊 Multi-Store Forecast Trend (Next Weeks)")
     multi_store_data = forecast_df[forecast_df["Store"].isin(store_list[:3])].sort_values("Date")
@@ -146,7 +158,7 @@ if forecast_df is not None and len(store_list) > 0:
     st.pyplot(fig2)
 
     # =========================
-    # Store-wise Average Forecast
+    # Store-wise average
     # =========================
     st.subheader("🏬 Average Forecasted Sales per Store")
     store_avg = forecast_df.groupby("Store")["Predicted_Weekly_Sales"].mean().sort_values().reset_index()
@@ -162,4 +174,4 @@ if forecast_df is not None and len(store_list) > 0:
     st.markdown("Developed by **Shahzad** | Professional Walmart Sales Forecast Dashboard")
 
 else:
-    st.warning("Please upload a CSV or Excel file with forecast data to display the dashboard.")
+    st.warning("Please upload a CSV or Excel file (.csv, .xls, .xlsx) with forecast data to display the dashboard.")
