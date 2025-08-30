@@ -41,7 +41,7 @@ def load_model():
 model = load_model()
 
 # =========================
-# Load Data (CSV / Excel) + Convert to CSV
+# Load Data (CSV / Excel) + Convert to CSV + Detect Date
 # =========================
 @st.cache_data
 def load_data(file_path=None):
@@ -49,26 +49,46 @@ def load_data(file_path=None):
         if file_path:
             if file_path.name.endswith(".csv"):
                 df = pd.read_csv(file_path)
-                st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
             elif file_path.name.endswith(".xls"):
                 df = pd.read_excel(file_path, engine="xlrd")
-                st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
             elif file_path.name.endswith(".xlsx"):
                 df = pd.read_excel(file_path, engine="openpyxl")
-                st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
             else:
                 st.error("Unsupported file type. Upload CSV, XLS, or XLSX.")
                 return None, []
+
+            # Convert to CSV for download
+            st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
         else:
-            # Load default file from repo root
+            # Default file
             try:
                 df = pd.read_csv("future_forecast.csv")
-                st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
             except FileNotFoundError:
                 df = pd.read_excel("future_forecast.xls", engine="xlrd")
-                st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
+            st.session_state['uploaded_csv'] = df.to_csv(index=False).encode('utf-8')
 
-        df["Date"] = pd.to_datetime(df["Date"])
+        # -------------------------
+        # Detect Date column
+        # -------------------------
+        date_col = None
+        for col in df.columns:
+            if "date" in col.lower():
+                date_col = col
+                break
+        if date_col is None:
+            st.error("❌ No 'Date' column found. Make sure your file has a date column.")
+            return None, []
+
+        df[date_col] = pd.to_datetime(df[date_col])
+        df.rename(columns={date_col: "Date"}, inplace=True)
+
+        # -------------------------
+        # Check Store column
+        # -------------------------
+        if "Store" not in df.columns:
+            st.error("❌ No 'Store' column found. Make sure your file has a 'Store' column.")
+            return None, []
+
         stores = sorted(df["Store"].unique())
         return df, stores
 
@@ -174,4 +194,4 @@ if forecast_df is not None and len(store_list) > 0:
     st.markdown("Developed by **Shahzad** | Professional Walmart Sales Forecast Dashboard")
 
 else:
-    st.warning("Please upload a CSV or Excel file (.csv, .xls, .xlsx) with forecast data to display the dashboard.")
+    st.warning("Please upload a CSV or Excel file (.csv, .xls, .xlsx) with a 'Date' and 'Store' column to display the dashboard.")
